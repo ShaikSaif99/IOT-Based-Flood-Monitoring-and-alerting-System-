@@ -1,0 +1,137 @@
+#include <WiFi.h>
+#include <ThingSpeak.h>
+#include <Wire.h>
+#include <DHT.h>
+#include <LiquidCrystal_I2C.h>
+#include <SoftwareSerial.h>
+SoftwareSerial SIM900(16,17);
+String SMS;
+// WiFi credentials
+const char* ssid = "spi";
+const char* password = "12345678";
+// ThingSpeak settings
+unsigned long myChannelNumber = 2722948;
+const char* myWriteAPIKey = "CU0CW593FTDV31GR";
+// GPIO Pin assignments
+const int trigPin = 18;
+const int echoPin = 19;
+const int redLedPin = 2;
+const int greenLedPin = 4;
+#define rainPin 14 #define DHTPIN 25 #define DHTTYPE DHT11 DHT dht(DHTPIN, DHTTYPE); // Pin for rain sensor digital output
+// Pin where the DHT11 data pin is connected
+// DHT 11
+// Initialize DHT sensor
+// GSM Module configuration
+//SoftwareSerial gsmSerial(16, 17); // TX, RX
+// LCD setup (I2C address 0x27)
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+// ThingSpeak client
+WiFiClient client;
+void setup() {
+// Start Serial communication
+Serial.begin(9600);
+SIM900.begin(9600);// Initialize LCD
+lcd.init();
+lcd.backlight();
+lcd.setCursor(0, 0);
+lcd.print("Starting...");
+// Setup pins
+pinMode(trigPin, OUTPUT);
+pinMode(echoPin, INPUT);
+pinMode(redLedPin, OUTPUT);
+pinMode(greenLedPin, OUTPUT);
+pinMode(rainPin, INPUT);
+dht.begin(); // Initialize DHT sensor
+// Connect to Wi-Fi
+Serial.print("Connecting to WiFi");
+WiFi.begin(ssid, password);
+while (WiFi.status() != WL_CONNECTED) {
+delay(500);
+Serial.print(".");
+}
+Serial.println("\nConnected to WiFi");
+// Connect to ThingSpeak
+ThingSpeak.begin(client);
+// Initialize GSM Module
+//gsmSerial.begin(9600);
+delay(1000);
+}
+void loop() {
+float distance = measureDistance();
+float humidity = dht.readHumidity();
+float temperature = dht.readTemperature();
+// Display data on LCD
+lcd.clear();
+lcd.setCursor(0, 0);
+lcd.print("Distance: ");
+lcd.print(distance);
+lcd.print(" cm");
+lcd.setCursor(0, 1);
+lcd.print("T:");lcd.print(temperature);
+lcd.print("C H:");
+lcd.print(humidity);
+lcd.print("%");
+// Check if DHT sensor reads failed
+if (isnan(humidity) || isnan(temperature)) {
+Serial.println("Failed to read from DHT sensor!");
+}
+// Distance detection with LED and GSM alert
+if (distance < 20) {
+digitalWrite(redLedPin, HIGH);
+digitalWrite(greenLedPin, LOW);
+// Send alert via GSM if distance is less than threshold
+SMS = "Alert:Flood Detected ";//////////////////////////////SMS message
+get_msg(SMS);
+} else {
+digitalWrite(redLedPin, LOW);
+digitalWrite(greenLedPin, HIGH);
+}
+// Rain detection with GSM alert
+int rainStatus = digitalRead(rainPin);
+if (rainStatus == LOW) { // Assuming LOW means rain detected
+Serial.println("Rain detected!");
+SMS = "Alert:Rain Detected ";//////////////////////////////SMS message
+get_msg(SMS);
+delay(60000); // Delay to avoid repeated alerts
+}
+// Send data to ThingSpeak
+sendDataToThingSpeak(distance, humidity, temperature);
+// Wait 20 seconds before the next reading
+delay(20000);
+}
+float measureDistance() {
+digitalWrite(trigPin, LOW);
+delayMicroseconds(2);
+digitalWrite(trigPin, HIGH);
+delayMicroseconds(10);digitalWrite(trigPin, LOW);
+long duration = pulseIn(echoPin, HIGH);
+float distance = (duration * 0.034) / 2;
+return distance;
+}
+void sendDataToThingSpeak(float distance, float humidity, float temperature) {
+ThingSpeak.setField(1, distance);
+ThingSpeak.setField(2, humidity);
+ThingSpeak.setField(3, temperature);
+int responseCode = ThingSpeak.writeFields(myChannelNumber, myWriteAPIKey);
+if (responseCode == 200) {
+Serial.println("Data sent to ThingSpeak");
+} else {
+Serial.print("Failed to send data, code: ");
+Serial.println(responseCode);
+}
+}
+int get_msg(String message){
+SIM900.print("AT+CMGF=1\r"); delay(100);
+SIM900.print("AT+CNMI=2,2,0,0,0\r"); upon receipt
+delay(100);
+// AT command to set SIM900 to SMS mode
+// Set module to send SMS data to serial out
+SIM900.println("AT+CMGF=1"); // Replace x with mobile number
+delay(1000);
+SIM900.println("AT+CMGS= \"+919380676549\"\r"); // Replace * with mobile number sim
+number - 8861273413
+delay(1000);
+SIM900.println(message);// The SMS text you want to send
+delay(100);
+SIM900.println((char)26);// ASCII code of CTRL+Z
+}
